@@ -19,6 +19,7 @@ package pkg
 import (
 	"context"
 	"log"
+	"strconv"
 	"sync"
 
 	"net/http"
@@ -30,9 +31,10 @@ import (
 )
 
 func Start(ctx context.Context, config configuration.Config) (wg *sync.WaitGroup, err error) {
-	log.Println("Starting metrics server on port 2112")
+	metricsPort := strconv.Itoa(config.MetricsPort)
+	log.Println("Starting metrics server on port " + metricsPort)
 	http.Handle("/metrics", promhttp.Handler())
-	go http.ListenAndServe(":2112", nil)
+	go http.ListenAndServe(":"+metricsPort, nil)
 	wg = &sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
@@ -40,6 +42,7 @@ func Start(ctx context.Context, config configuration.Config) (wg *sync.WaitGroup
 		err = worker.Start(ctx, config)
 		if err != nil {
 			log.Println(err)
+			panic(err)
 		}
 	}()
 

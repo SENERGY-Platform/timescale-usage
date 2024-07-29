@@ -6,5 +6,6 @@
     "postgres_pw": "",
     "postgres_source_schema": "public",
     "postgres_usage_schema": "usage",
-    "duration": ""
+    "duration": "",
+    "metrics_port": 2112
 }

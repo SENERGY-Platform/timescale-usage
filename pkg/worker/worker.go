@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/SENERGY-Platform/timescale-usage/pkg/configuration"
@@ -114,6 +115,10 @@ func (w *Worker) upsertTables() error {
 	for _, table := range tables {
 		err = w.upsert(table, table, w.config.PostgresSourceSchema)
 		if err != nil {
+			if errIsTableDoesNotExist(err) {
+				log.Println("WARNING: Table " + table + " seems to no longer exist")
+				continue
+			}
 			return err
 		}
 	}
@@ -130,6 +135,10 @@ func (w *Worker) upsertViews() error {
 	for _, view := range views {
 		err = w.upsert(view.hypertable, view.view, "_timescaledb_internal")
 		if err != nil {
+			if errIsTableDoesNotExist(err) {
+				log.Println("WARNING: View " + view.view + " seems to no longer exist")
+				continue
+			}
 			return err
 		}
 	}
@@ -177,4 +186,8 @@ func (w *Worker) upsert(hypertable string, saveAsTable string, namespace string)
 	w.bytesMetrics.WithLabelValues(saveAsTable).Set(float64(tableSizeBytes))
 
 	return nil
+}
+
+func errIsTableDoesNotExist(err error) bool {
+	return strings.Contains(err.Error(), "SQLSTATE 42P01")
 }
