@@ -60,9 +60,15 @@ func Start(ctx context.Context, config configuration.Config) error {
 		return err
 	}
 
-	if len(config.Duration) == 0 {
-		return w.run()
+	err = w.run()
+	if err != nil {
+		return err
 	}
+
+	if len(config.Duration) == 0 {
+		return nil
+	}
+
 	d, err := time.ParseDuration(config.Duration)
 	if err != nil {
 		return err
