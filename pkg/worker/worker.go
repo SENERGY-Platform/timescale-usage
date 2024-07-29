@@ -60,13 +60,8 @@ func Start(ctx context.Context, config configuration.Config) error {
 		return err
 	}
 
-	err = w.run()
-	if err != nil {
-		return err
-	}
-
 	if len(config.Duration) == 0 {
-		return nil
+		return w.run()
 	}
 
 	d, err := time.ParseDuration(config.Duration)
@@ -74,7 +69,13 @@ func Start(ctx context.Context, config configuration.Config) error {
 		return err
 	}
 
-	ticker := time.NewTicker(d)
+	ticker := time.NewTicker(d) // start ticker early, since run() takes some time
+
+	err = w.run() // run once at startup
+	if err != nil {
+		return err
+	}
+
 	for {
 		select {
 		case <-ticker.C:
