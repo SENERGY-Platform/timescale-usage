@@ -1,6 +1,6 @@
 module github.com/SENERGY-Platform/timescale-usage
 
-go 1.21.4
+go 1.22.5
 
 require (
 	github.com/jackc/pgx v3.6.2+incompatible
