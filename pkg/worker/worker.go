@@ -22,15 +22,17 @@ import (
 	"log"
 	"time"
 
+	"github.com/SENERGY-Platform/timescale-usage/pkg/configuration"
 	"github.com/jackc/pgx"
 	"github.com/jackc/pgx/pgtype"
-
-	"github.com/SENERGY-Platform/timescale-usage/pkg/configuration"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 type Worker struct {
-	conn   *pgx.ConnPool
-	config configuration.Config
+	conn         *pgx.ConnPool
+	config       configuration.Config
+	bytesMetrics *prometheus.GaugeVec
 }
 
 func Start(ctx context.Context, config configuration.Config) error {
@@ -49,17 +51,38 @@ func Start(ctx context.Context, config configuration.Config) error {
 	}
 	defer conn.Close()
 
-	w := &Worker{conn: conn, config: config}
-	return w.run()
+	bytesMetrics := promauto.NewGaugeVec(prometheus.GaugeOpts{Name: "timescale_table_size_bytes", Help: "Table size in bytes"}, []string{"table"})
 
-}
-
-func (w *Worker) run() (err error) {
+	w := &Worker{conn: conn, config: config, bytesMetrics: bytesMetrics}
 	err = w.migrate()
 	if err != nil {
 		return err
 	}
 
+	if len(config.Duration) == 0 {
+		return w.run()
+	}
+	d, err := time.ParseDuration(config.Duration)
+	if err != nil {
+		return err
+	}
+
+	ticker := time.NewTicker(d)
+	for {
+		select {
+		case <-ticker.C:
+			err = w.run()
+			if err != nil {
+				return err
+			}
+		case <-ctx.Done():
+			return nil
+		}
+	}
+}
+
+func (w *Worker) run() (err error) {
+	log.Println("Starting Update..")
 	err = w.upsertTables()
 	if err != nil {
 		return err
@@ -142,7 +165,7 @@ func (w *Worker) upsert(hypertable string, saveAsTable string, namespace string)
 		bytesPerDay = float64(tableSizeBytes) / days
 	}
 
-	log.Printf("%v %v %v\n", hypertable, tableSizeBytes, bytesPerDay)
+	log.Printf("%v %v %v\n", saveAsTable, tableSizeBytes, bytesPerDay)
 
 	nowStr := now.Format(time.RFC3339)
 	query := fmt.Sprintf("INSERT INTO %v.usage (\"table\", bytes, updated_at, bytes_per_day) VALUES ('%v', %v, '%v', %v) ON CONFLICT (\"table\") DO UPDATE SET bytes = %v, updated_at = '%v', bytes_per_day = %v;", w.config.PostgresUsageSchema, saveAsTable, tableSizeBytes, nowStr, bytesPerDay, tableSizeBytes, nowStr, bytesPerDay)
@@ -150,5 +173,8 @@ func (w *Worker) upsert(hypertable string, saveAsTable string, namespace string)
 	if err != nil {
 		return err
 	}
+
+	w.bytesMetrics.WithLabelValues(saveAsTable).Set(float64(tableSizeBytes))
+
 	return nil
 }

@@ -35,6 +35,7 @@ type ConfigStruct struct {
 	PostgresPw           string `json:"postgres_pw"`
 	PostgresSourceSchema string `json:"postgres_source_schema"`
 	PostgresUsageSchema  string `json:"postgres_usage_schema"`
+	Duration             string `json:"duration"`
 }
 
 type Config = *ConfigStruct
