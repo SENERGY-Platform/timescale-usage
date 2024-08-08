@@ -113,14 +113,26 @@ func (w *Worker) run() (err error) {
 }
 
 func (w *Worker) upsertTables() error {
-	tables, err := w.getTables()
+	return w.upsertWithQuery("SELECT hypertable_schema, hypertable_name, hypertable_approximate_size(format('%I.%I', hypertable_schema, hypertable_name)::regclass)  FROM timescaledb_information.hypertables;")
+}
+
+func (w *Worker) upsertViews() error {
+	return w.upsertWithQuery("SELECT view_schema, view_name, hypertable_approximate_size(format('%I.%I', view_schema, view_name)::regclass) FROM timescaledb_information.continuous_aggregates;")
+}
+
+func (w *Worker) upsertWithQuery(query string) error {
+	rows, err := w.conn.Query(query)
 	if err != nil {
 		return err
 	}
-	log.Printf("Got %v tables\n", len(tables))
-
-	for _, table := range tables {
-		err = w.upsert(table, table, w.config.PostgresSourceSchema)
+	for rows.Next() {
+		var size pgtype.Int8
+		var schema, table string
+		err = rows.Scan(&schema, &table, &size)
+		if err != nil {
+			return err
+		}
+		err = w.upsert(schema, table, size)
 		if err != nil {
 			if errIsTableDoesNotExist(err) {
 				log.Println("WARNING: Table " + table + " seems to no longer exist")
@@ -132,42 +144,17 @@ func (w *Worker) upsertTables() error {
 	return nil
 }
 
-func (w *Worker) upsertViews() error {
-	views, err := w.getViews()
-	if err != nil {
-		return err
-	}
-	log.Printf("Got %v views\n", len(views))
-
-	for _, view := range views {
-		err = w.upsert(view.hypertable, view.view, "_timescaledb_internal")
-		if err != nil {
-			if errIsTableDoesNotExist(err) {
-				log.Println("WARNING: View " + view.view + " seems to no longer exist")
-				continue
-			}
-			return err
-		}
-	}
-	return nil
-}
-
-func (w *Worker) upsert(hypertable string, saveAsTable string, namespace string) (err error) {
-	row := w.conn.QueryRow("SELECT hypertable_size('\"" + namespace + "\".\"" + hypertable + "\"');")
-	var val pgtype.Int8
-	err = row.Scan(&val)
-	if err != nil {
-		return err
-	}
-	var tableSizeBytes int64 = 0
-	if val.Get() != nil {
-		tableSizeBytes = val.Get().(int64)
-	}
-
+func (w *Worker) upsert(schema string, table string, size pgtype.Int8) (err error) {
 	now := time.Now()
+
+	var tableSizeBytes int64 = 0
+	if size.Get() != nil {
+		tableSizeBytes = size.Get().(int64)
+	}
+
 	firstDate := now
 	pgdate := pgtype.Timestamptz{}
-	err = w.conn.QueryRow("SELECT time from \"" + namespace + "\".\"" + hypertable + "\" ORDER BY time ASC LIMIT 1;").Scan(&pgdate)
+	err = w.conn.QueryRow("SELECT time from \"" + schema + "\".\"" + table + "\" ORDER BY time ASC LIMIT 1;").Scan(&pgdate)
 	if err != nil && err != pgx.ErrNoRows {
 		return err
 	}
@@ -181,16 +168,16 @@ func (w *Worker) upsert(hypertable string, saveAsTable string, namespace string)
 		bytesPerDay = float64(tableSizeBytes) / days
 	}
 
-	log.Printf("%v %v %v\n", saveAsTable, tableSizeBytes, bytesPerDay)
+	log.Printf("%v %v %v\n", table, tableSizeBytes, bytesPerDay)
 
 	nowStr := now.Format(time.RFC3339)
-	query := fmt.Sprintf("INSERT INTO %v.usage (\"table\", bytes, updated_at, bytes_per_day) VALUES ('%v', %v, '%v', %v) ON CONFLICT (\"table\") DO UPDATE SET bytes = %v, updated_at = '%v', bytes_per_day = %v;", w.config.PostgresUsageSchema, saveAsTable, tableSizeBytes, nowStr, bytesPerDay, tableSizeBytes, nowStr, bytesPerDay)
+	query := fmt.Sprintf("INSERT INTO %v.usage (\"table\", bytes, updated_at, bytes_per_day) VALUES ('%v', %v, '%v', %v) ON CONFLICT (\"table\") DO UPDATE SET bytes = %v, updated_at = '%v', bytes_per_day = %v;", w.config.PostgresUsageSchema, table, tableSizeBytes, nowStr, bytesPerDay, tableSizeBytes, nowStr, bytesPerDay)
 	_, err = w.conn.Exec(query)
 	if err != nil {
 		return err
 	}
 
-	w.bytesMetrics.WithLabelValues(saveAsTable).Set(float64(tableSizeBytes))
+	w.bytesMetrics.WithLabelValues(table).Set(float64(tableSizeBytes))
 
 	return nil
 }
