@@ -1,6 +1,6 @@
 module github.com/SENERGY-Platform/timescale-usage
 
-go 1.22.5
+go 1.26.1
 
 require (
 	github.com/jackc/pgx v3.6.2+incompatible
@@ -8,6 +8,7 @@ require (
 )
 
 require (
+	github.com/SENERGY-Platform/go-service-base/struct-logger v0.6.0
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/cockroachdb/apd v1.1.0 // indirect

@@ -19,11 +19,11 @@ package worker
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/SENERGY-Platform/timescale-usage/pkg/configuration"
+	"github.com/SENERGY-Platform/timescale-usage/pkg/log"
 	"github.com/jackc/pgx"
 	"github.com/jackc/pgx/pgtype"
 	"github.com/prometheus/client_golang/prometheus"
@@ -90,7 +90,7 @@ func Start(ctx context.Context, config configuration.Config) error {
 }
 
 func (w *Worker) run() (err error) {
-	log.Println("Starting Update..")
+	log.Logger.Info("Starting Update..")
 	err = w.upsertTables()
 	if err != nil {
 		return err
@@ -102,18 +102,18 @@ func (w *Worker) run() (err error) {
 	}
 
 	// Cleanup outdated
-	log.Println("Cleanup")
+	log.Logger.Info("Cleanup")
 	_, err = w.conn.Exec(fmt.Sprintf("DELETE FROM %v.usage where \"table\" NOT IN (SELECT hypertable_name FROM timescaledb_information.hypertables  WHERE hypertable_schema = '%v') AND \"table\" NOT IN (SELECT view_name FROM timescaledb_information.continuous_aggregates WHERE view_schema = '%v');", w.config.PostgresUsageSchema, w.config.PostgresSourceSchema, w.config.PostgresSourceSchema))
 	if err != nil {
 		return err
 	}
 
-	log.Println("Done")
+	log.Logger.Info("Done")
 	return nil
 }
 
 func (w *Worker) upsertTables() error {
-	return w.upsertWithQuery("SELECT hypertable_schema, hypertable_name, hypertable_approximate_size(format('%I.%I', hypertable_schema, hypertable_name)::regclass)  FROM timescaledb_information.hypertables;")
+	return w.upsertWithQuery("SELECT hypertable_schema, hypertable_name, hypertable_approximate_size(format('%I.%I', hypertable_schema, hypertable_name)::regclass) FROM timescaledb_information.hypertables;")
 }
 
 func (w *Worker) upsertViews() error {
@@ -135,7 +135,7 @@ func (w *Worker) upsertWithQuery(query string) error {
 		err = w.upsert(schema, table, size)
 		if err != nil {
 			if errIsTableDoesNotExist(err) {
-				log.Println("WARNING: Table " + table + " seems to no longer exist")
+				log.Logger.Warn("Table " + table + " seems to no longer exist")
 				continue
 			}
 			return err
@@ -168,7 +168,7 @@ func (w *Worker) upsert(schema string, table string, size pgtype.Int8) (err erro
 		bytesPerDay = float64(tableSizeBytes) / days
 	}
 
-	log.Printf("%v %v %v\n", table, tableSizeBytes, bytesPerDay)
+	log.Logger.Info("Update", "table", table, "size", tableSizeBytes, "bytes_per_day", bytesPerDay)
 
 	nowStr := now.Format(time.RFC3339)
 	query := fmt.Sprintf("INSERT INTO %v.usage (\"table\", bytes, updated_at, bytes_per_day) VALUES ('%v', %v, '%v', %v) ON CONFLICT (\"table\") DO UPDATE SET bytes = %v, updated_at = '%v', bytes_per_day = %v;", w.config.PostgresUsageSchema, table, tableSizeBytes, nowStr, bytesPerDay, tableSizeBytes, nowStr, bytesPerDay)

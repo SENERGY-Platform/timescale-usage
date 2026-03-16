@@ -19,12 +19,15 @@ package main
 import (
 	"context"
 	"flag"
-	"github.com/SENERGY-Platform/timescale-usage/pkg"
-	"github.com/SENERGY-Platform/timescale-usage/pkg/configuration"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/SENERGY-Platform/go-service-base/struct-logger/attributes"
+	"github.com/SENERGY-Platform/timescale-usage/pkg"
+	"github.com/SENERGY-Platform/timescale-usage/pkg/configuration"
+	_log "github.com/SENERGY-Platform/timescale-usage/pkg/log"
 )
 
 func main() {
@@ -37,18 +40,20 @@ func main() {
 		log.Fatal(err)
 	}
 
+	_log.Init(config)
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	wg, err := pkg.Start(ctx, config)
 	if err != nil {
-		log.Fatal(err)
+		_log.Logger.Error("failed to start package", attributes.ErrorKey, err)
 	}
 
 	go func() {
 		shutdown := make(chan os.Signal, 1)
 		signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
 		sig := <-shutdown
-		log.Println("received shutdown signal", sig)
+		_log.Logger.Info("received shutdown signal", "signal", sig)
 		cancel()
 	}()
 

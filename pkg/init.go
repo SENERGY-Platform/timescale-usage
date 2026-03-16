@@ -18,7 +18,6 @@ package pkg
 
 import (
 	"context"
-	"log"
 	"strconv"
 	"sync"
 
@@ -26,13 +25,15 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/SENERGY-Platform/go-service-base/struct-logger/attributes"
 	"github.com/SENERGY-Platform/timescale-usage/pkg/configuration"
+	"github.com/SENERGY-Platform/timescale-usage/pkg/log"
 	"github.com/SENERGY-Platform/timescale-usage/pkg/worker"
 )
 
 func Start(ctx context.Context, config configuration.Config) (wg *sync.WaitGroup, err error) {
 	metricsPort := strconv.Itoa(config.MetricsPort)
-	log.Println("Starting metrics server on port " + metricsPort)
+	log.Logger.Info("Starting metrics server on port " + metricsPort)
 	http.Handle("/metrics", promhttp.Handler())
 	go http.ListenAndServe(":"+metricsPort, nil)
 	wg = &sync.WaitGroup{}
@@ -41,7 +42,7 @@ func Start(ctx context.Context, config configuration.Config) (wg *sync.WaitGroup
 		defer wg.Done()
 		err = worker.Start(ctx, config)
 		if err != nil {
-			log.Println(err)
+			log.Logger.Error("failed to start worker", attributes.ErrorKey, err)
 			panic(err)
 		}
 	}()

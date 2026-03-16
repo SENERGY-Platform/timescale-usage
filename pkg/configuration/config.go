@@ -37,6 +37,8 @@ type ConfigStruct struct {
 	PostgresUsageSchema  string `json:"postgres_usage_schema"`
 	Duration             string `json:"duration"`
 	MetricsPort          int    `json:"metrics_port"`
+	Debug                bool   `json:"debug"`
+	LogHandler           string `json:"log_handler"`
 }
 
 type Config = *ConfigStruct

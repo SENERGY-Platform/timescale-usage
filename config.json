@@ -7,5 +7,7 @@
     "postgres_source_schema": "public",
     "postgres_usage_schema": "usage",
     "duration": "",
-    "metrics_port": 2112
+    "metrics_port": 2112,
+    "debug": false,
+    "log_handler": "json"
 }
